@@ -99,6 +99,7 @@ class AudioClassificationModel(nn.Module):
     def __init__(self, num_labels=2):
         super().__init__()
         
+        print("  → Initializing Wav2Vec2 model (this may take a moment)...")
         # Load pretrained Wav2Vec2 config (base model)
         config = Wav2Vec2Config(
             hidden_size=256,
@@ -107,6 +108,7 @@ class AudioClassificationModel(nn.Module):
             num_attention_heads=4,
         )
         self.wav2vec2 = Wav2Vec2Model(config)
+        print("  ✓ Wav2Vec2 model initialized")
         
         # Classification head
         self.classifier = nn.Sequential(
@@ -250,10 +252,13 @@ def benchmark_audio():
     print(f"Model: Wav2Vec2 + Classification Head")
     
     # Create dataset and dataloader
+    print("\n[1/4] Creating synthetic audio dataset...")
     dataset = SyntheticAudioDataset(num_samples=500)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+    print(f"  ✓ Created {len(dataset)} audio samples")
     
     # Initialize model
+    print("\n[2/4] Initializing audio model...")
     model = AudioClassificationModel(num_labels=2).to(DEVICE)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -268,14 +273,15 @@ def benchmark_audio():
     torch.cuda.reset_peak_memory_stats() if torch.cuda.is_available() else None
     
     for epoch in range(NUM_EPOCHS):
+        print(f"\n  Epoch {epoch+1}/{NUM_EPOCHS} - Training...", end='', flush=True)
         epoch_metrics = train_epoch(model, dataloader, criterion, optimizer, DEVICE, "Audio")
         results.append(epoch_metrics)
         
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS}")
-        print(f"  Loss: {epoch_metrics['loss']:.4f}")
-        print(f"  Time: {epoch_metrics['time']:.2f}s")
-        print(f"  Throughput: {epoch_metrics['throughput']:.2f} samples/sec")
-        print(f"  Memory used: {epoch_metrics['memory_used_mb']:.2f} MB")
+        print(" Done!")
+        print(f"    Loss: {epoch_metrics['loss']:.4f}")
+        print(f"    Time: {epoch_metrics['time']:.2f}s")
+        print(f"    Throughput: {epoch_metrics['throughput']:.2f} samples/sec")
+        print(f"    Memory used: {epoch_metrics['memory_used_mb']:.2f} MB")
     
     total_time = time.time() - total_start
     peak_memory = torch.cuda.max_memory_allocated() / 1024 / 1024 if torch.cuda.is_available() else 0
@@ -303,40 +309,46 @@ def benchmark_video():
     print(f"Model: 3D CNN for VMAF Score Regression")
     
     # Create dataset and dataloader
+    print("\n[1/4] Creating synthetic video dataset...")
     dataset = SyntheticVideoDataset(num_samples=300)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+    print(f"  ✓ Created {len(dataset)} video samples")
     
     # Initialize model
+    print("\n[2/4] Initializing video model...")
     model = Video3DCNN().to(DEVICE)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
-    print(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
-    print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
+    print(f"  ✓ Total parameters: {sum(p.numel() for p in model.parameters()):,}")
+    print(f"  ✓ Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     
     # Training loop
+    print("\n[3/4] Training video model...")
     results = []
     total_start = time.time()
     
     torch.cuda.reset_peak_memory_stats() if torch.cuda.is_available() else None
     
     for epoch in range(NUM_EPOCHS):
+        print(f"\n  Epoch {epoch+1}/{NUM_EPOCHS} - Training...", end='', flush=True)
         epoch_metrics = train_epoch(model, dataloader, criterion, optimizer, DEVICE, "Video")
         results.append(epoch_metrics)
         
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS}")
-        print(f"  Loss (MSE): {epoch_metrics['loss']:.4f}")
-        print(f"  Time: {epoch_metrics['time']:.2f}s")
-        print(f"  Throughput: {epoch_metrics['throughput']:.2f} samples/sec")
-        print(f"  Memory used: {epoch_metrics['memory_used_mb']:.2f} MB")
+        print(" Done!")
+        print(f"    Loss (MSE): {epoch_metrics['loss']:.4f}")
+        print(f"    Time: {epoch_metrics['time']:.2f}s")
+        print(f"    Throughput: {epoch_metrics['throughput']:.2f} samples/sec")
+        print(f"    Memory used: {epoch_metrics['memory_used_mb']:.2f} MB")
     
     total_time = time.time() - total_start
     peak_memory = torch.cuda.max_memory_allocated() / 1024 / 1024 if torch.cuda.is_available() else 0
     
-    print(f"\nTotal Training Time: {total_time:.2f}s")
-    print(f"Average Epoch Time: {total_time / NUM_EPOCHS:.2f}s")
-    print(f"Peak GPU Memory: {peak_memory:.2f} MB")
-    print(f"Average Throughput: {np.mean([r['throughput'] for r in results]):.2f} samples/sec")
+    print("\n[4/4] Video benchmark complete!")
+    print(f"  ✓ Total Training Time: {total_time:.2f}s")
+    print(f"  ✓ Average Epoch Time: {total_time / NUM_EPOCHS:.2f}s")
+    print(f"  ✓ Peak GPU Memory: {peak_memory:.2f} MB")
+    print(f"  ✓ Average Throughput: {np.mean([r['throughput'] for r in results]):.2f} samples/sec")
     
     return {
         'model': '3D CNN',
@@ -476,9 +488,11 @@ def create_benchmark_visualization(audio_results, video_results, device_info):
                  fontsize=14, fontweight='bold', y=0.995)
     
     # Save figure
-    output_path = '/mnt/user-data/outputs/benchmark_results.png'
+    output_dir = 'outputs'
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, 'benchmark_results.png')
     plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
-    print(f"\nVisualization saved to: {output_path}")
+    print(f"\n  ✓ Visualization saved to: {output_path}")
     plt.close()
 
 
@@ -487,6 +501,10 @@ def create_benchmark_visualization(audio_results, video_results, device_info):
 # ============================================================================
 
 if __name__ == "__main__":
+    print("\n" + "🚀" * 40)
+    print("Starting GPU Benchmarking Suite...")
+    print("🚀" * 40)
+    
     audio_results = benchmark_audio()
     video_results = benchmark_video()
     
@@ -509,10 +527,12 @@ if __name__ == "__main__":
     }
     
     # Create PNG visualization
-    print("\nGenerating visualization...")
+    print("\n" + "=" * 80)
+    print("Generating visualization...")
     create_benchmark_visualization(audio_results, video_results, device_info)
     
     # Save results to JSON
+    print("\nSaving results to JSON...")
     results_summary = {
         'timestamp': device_info['timestamp'],
         'device': device_info['device'],
@@ -523,8 +543,13 @@ if __name__ == "__main__":
         'video': video_results
     }
     
-    with open('/mnt/user-data/outputs/benchmark_results.json', 'w') as f:
+    output_dir = 'outputs'
+    os.makedirs(output_dir, exist_ok=True)
+    json_path = os.path.join(output_dir, 'benchmark_results.json')
+    with open(json_path, 'w') as f:
         json.dump(results_summary, f, indent=2, default=str)
     
-    print("Results saved to benchmark_results.json")
+    print(f"  ✓ Results saved to {json_path}")
+    print("\n" + "=" * 80)
+    print("✅ All benchmarks completed successfully!")
     print("=" * 80)
