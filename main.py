@@ -29,9 +29,9 @@ AUDIO_DURATION = 1  # seconds (reduced for faster CPU testing)
 AUDIO_SEQUENCE_LENGTH = AUDIO_SAMPLE_RATE * AUDIO_DURATION
 
 # Video config
-VIDEO_NUM_FRAMES = 8  # reduced for faster CPU testing
-VIDEO_FRAME_HEIGHT = 32  # reduced resolution
-VIDEO_FRAME_WIDTH = 32  # reduced resolution
+VIDEO_NUM_FRAMES = 16  # increased for more complexity
+VIDEO_FRAME_HEIGHT = 64  # increased resolution
+VIDEO_FRAME_WIDTH = 64  # increased resolution
 VIDEO_CHANNELS = 3
 
 print("=" * 80)
@@ -73,7 +73,7 @@ class SyntheticAudioDataset(Dataset):
 
 class SyntheticVideoDataset(Dataset):
     """Synthetic video dataset for 3D CNN VMAF quality prediction"""
-    def __init__(self, num_samples=80):
+    def __init__(self, num_samples=200):
         self.num_samples = num_samples
     
     def __len__(self):
@@ -140,27 +140,34 @@ class Video3DCNN(nn.Module):
     def __init__(self):
         super().__init__()
         
-        # 3D convolutional layers (simplified for CPU)
-        self.conv3d_1 = nn.Conv3d(3, 16, kernel_size=(3, 3, 3), padding=(1, 1, 1))
-        self.bn3d_1 = nn.BatchNorm3d(16)
+        # 3D convolutional layers (more complex)
+        self.conv3d_1 = nn.Conv3d(3, 32, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn3d_1 = nn.BatchNorm3d(32)
         self.pool3d_1 = nn.MaxPool3d(kernel_size=(2, 2, 2))
         
-        self.conv3d_2 = nn.Conv3d(16, 32, kernel_size=(3, 3, 3), padding=(1, 1, 1))
-        self.bn3d_2 = nn.BatchNorm3d(32)
+        self.conv3d_2 = nn.Conv3d(32, 64, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn3d_2 = nn.BatchNorm3d(64)
         self.pool3d_2 = nn.MaxPool3d(kernel_size=(2, 2, 2))
         
+        self.conv3d_3 = nn.Conv3d(64, 128, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn3d_3 = nn.BatchNorm3d(128)
+        self.pool3d_3 = nn.MaxPool3d(kernel_size=(2, 2, 2))
+        
         # Fully connected layers
-        # After 2 pooling layers: (frames/4, height/4, width/4)
-        self.fc_input_size = 32 * (VIDEO_NUM_FRAMES // 4) * (VIDEO_FRAME_HEIGHT // 4) * (VIDEO_FRAME_WIDTH // 4)
+        # After 3 pooling layers: (frames/8, height/8, width/8)
+        self.fc_input_size = 128 * (VIDEO_NUM_FRAMES // 8) * (VIDEO_FRAME_HEIGHT // 8) * (VIDEO_FRAME_WIDTH // 8)
         
         self.fc = nn.Sequential(
-            nn.Linear(self.fc_input_size, 128),
+            nn.Linear(self.fc_input_size, 512),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(128, 64),
+            nn.Linear(512, 256),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(64, 1)  # Regression: VMAF score
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, 1)  # Regression: VMAF score
         )
     
     def forward(self, x):
@@ -177,6 +184,11 @@ class Video3DCNN(nn.Module):
         x = self.bn3d_2(x)
         x = torch.relu(x)
         x = self.pool3d_2(x)
+        
+        x = self.conv3d_3(x)
+        x = self.bn3d_3(x)
+        x = torch.relu(x)
+        x = self.pool3d_3(x)
         
         x = x.view(x.size(0), -1)
         x = self.fc(x)
@@ -310,7 +322,7 @@ def benchmark_video():
     
     # Create dataset and dataloader
     print("\n[1/4] Creating synthetic video dataset...")
-    dataset = SyntheticVideoDataset(num_samples=80)
+    dataset = SyntheticVideoDataset(num_samples=200)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
     print(f"  ✓ Created {len(dataset)} video samples")
     
@@ -398,6 +410,7 @@ def create_benchmark_visualization(audio_results, video_results, device_info):
     ax1.set_xlabel('Epoch', fontsize=10, fontweight='bold')
     ax1.set_ylabel('Loss (CrossEntropy)', fontsize=10, fontweight='bold')
     ax1.set_title('Audio Model: Training Loss', fontsize=11, fontweight='bold')
+    ax1.set_ylim(0, 1)
     ax1.grid(True, alpha=0.3)
     ax1.legend()
     
@@ -408,6 +421,7 @@ def create_benchmark_visualization(audio_results, video_results, device_info):
     ax2.set_xlabel('Epoch', fontsize=10, fontweight='bold')
     ax2.set_ylabel('Loss (MSE)', fontsize=10, fontweight='bold')
     ax2.set_title('Video Model: Training Loss', fontsize=11, fontweight='bold')
+    ax2.set_ylim(0, 2000)
     ax2.grid(True, alpha=0.3)
     ax2.legend()
     
@@ -423,6 +437,7 @@ def create_benchmark_visualization(audio_results, video_results, device_info):
     ax3.set_xlabel('Epoch', fontsize=10, fontweight='bold')
     ax3.set_ylabel('Throughput (samples/sec)', fontsize=10, fontweight='bold')
     ax3.set_title('Throughput per Epoch', fontsize=11, fontweight='bold')
+    ax3.set_ylim(0, 50)
     ax3.set_xticks(x)
     ax3.set_xticklabels(epochs)
     ax3.legend()
@@ -438,6 +453,7 @@ def create_benchmark_visualization(audio_results, video_results, device_info):
     ax4.set_xlabel('Epoch', fontsize=10, fontweight='bold')
     ax4.set_ylabel('Time (seconds)', fontsize=10, fontweight='bold')
     ax4.set_title('Training Time per Epoch', fontsize=11, fontweight='bold')
+    ax4.set_ylim(0, 50)
     ax4.set_xticks(x)
     ax4.set_xticklabels(epochs)
     ax4.legend()
@@ -453,6 +469,7 @@ def create_benchmark_visualization(audio_results, video_results, device_info):
     ax5.set_xlabel('Epoch', fontsize=10, fontweight='bold')
     ax5.set_ylabel('Memory (MB)', fontsize=10, fontweight='bold')
     ax5.set_title('Memory Usage per Epoch', fontsize=11, fontweight='bold')
+    ax5.set_ylim(-50, 500)
     ax5.set_xticks(x)
     ax5.set_xticklabels(epochs)
     ax5.legend()
