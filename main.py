@@ -18,20 +18,20 @@ from matplotlib.gridspec import GridSpec
 # ============================================================================
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-BATCH_SIZE = 16
-NUM_EPOCHS = 3
+BATCH_SIZE = 4
+NUM_EPOCHS = 2
 LEARNING_RATE = 0.001
 NUM_WORKERS = 2
 
 # Audio config
 AUDIO_SAMPLE_RATE = 16000
-AUDIO_DURATION = 3  # seconds
+AUDIO_DURATION = 1  # seconds (reduced for faster CPU testing)
 AUDIO_SEQUENCE_LENGTH = AUDIO_SAMPLE_RATE * AUDIO_DURATION
 
 # Video config
-VIDEO_NUM_FRAMES = 16
-VIDEO_FRAME_HEIGHT = 64
-VIDEO_FRAME_WIDTH = 64
+VIDEO_NUM_FRAMES = 8  # reduced for faster CPU testing
+VIDEO_FRAME_HEIGHT = 32  # reduced resolution
+VIDEO_FRAME_WIDTH = 32  # reduced resolution
 VIDEO_CHANNELS = 3
 
 print("=" * 80)
@@ -53,7 +53,7 @@ print("=" * 80)
 
 class SyntheticAudioDataset(Dataset):
     """Synthetic audio dataset for Wav2Vec2 training (speech classification)"""
-    def __init__(self, num_samples=500):
+    def __init__(self, num_samples=100):
         self.num_samples = num_samples
         self.sequence_length = AUDIO_SEQUENCE_LENGTH
     
@@ -73,7 +73,7 @@ class SyntheticAudioDataset(Dataset):
 
 class SyntheticVideoDataset(Dataset):
     """Synthetic video dataset for 3D CNN VMAF quality prediction"""
-    def __init__(self, num_samples=300):
+    def __init__(self, num_samples=80):
         self.num_samples = num_samples
     
     def __len__(self):
@@ -100,22 +100,22 @@ class AudioClassificationModel(nn.Module):
         super().__init__()
         
         print("  → Initializing Wav2Vec2 model (this may take a moment)...")
-        # Load pretrained Wav2Vec2 config (base model)
+        # Load pretrained Wav2Vec2 config (simplified for CPU)
         config = Wav2Vec2Config(
-            hidden_size=256,
-            num_hidden_layers=4,
-            intermediate_size=1024,
-            num_attention_heads=4,
+            hidden_size=128,
+            num_hidden_layers=2,
+            intermediate_size=512,
+            num_attention_heads=2,
         )
         self.wav2vec2 = Wav2Vec2Model(config)
         print("  ✓ Wav2Vec2 model initialized")
         
         # Classification head
         self.classifier = nn.Sequential(
-            nn.Linear(256, 128),
+            nn.Linear(128, 64),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(128, num_labels)
+            nn.Linear(64, num_labels)
         )
     
     def forward(self, input_values):
@@ -140,27 +140,27 @@ class Video3DCNN(nn.Module):
     def __init__(self):
         super().__init__()
         
-        # 3D convolutional layers
-        self.conv3d_1 = nn.Conv3d(3, 32, kernel_size=(3, 3, 3), padding=(1, 1, 1))
-        self.bn3d_1 = nn.BatchNorm3d(32)
+        # 3D convolutional layers (simplified for CPU)
+        self.conv3d_1 = nn.Conv3d(3, 16, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn3d_1 = nn.BatchNorm3d(16)
         self.pool3d_1 = nn.MaxPool3d(kernel_size=(2, 2, 2))
         
-        self.conv3d_2 = nn.Conv3d(32, 64, kernel_size=(3, 3, 3), padding=(1, 1, 1))
-        self.bn3d_2 = nn.BatchNorm3d(64)
+        self.conv3d_2 = nn.Conv3d(16, 32, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn3d_2 = nn.BatchNorm3d(32)
         self.pool3d_2 = nn.MaxPool3d(kernel_size=(2, 2, 2))
         
         # Fully connected layers
         # After 2 pooling layers: (frames/4, height/4, width/4)
-        self.fc_input_size = 64 * (VIDEO_NUM_FRAMES // 4) * (VIDEO_FRAME_HEIGHT // 4) * (VIDEO_FRAME_WIDTH // 4)
+        self.fc_input_size = 32 * (VIDEO_NUM_FRAMES // 4) * (VIDEO_FRAME_HEIGHT // 4) * (VIDEO_FRAME_WIDTH // 4)
         
         self.fc = nn.Sequential(
-            nn.Linear(self.fc_input_size, 256),
+            nn.Linear(self.fc_input_size, 128),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(256, 128),
+            nn.Linear(128, 64),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(128, 1)  # Regression: VMAF score
+            nn.Linear(64, 1)  # Regression: VMAF score
         )
     
     def forward(self, x):
@@ -253,7 +253,7 @@ def benchmark_audio():
     
     # Create dataset and dataloader
     print("\n[1/4] Creating synthetic audio dataset...")
-    dataset = SyntheticAudioDataset(num_samples=500)
+    dataset = SyntheticAudioDataset(num_samples=100)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
     print(f"  ✓ Created {len(dataset)} audio samples")
     
@@ -310,7 +310,7 @@ def benchmark_video():
     
     # Create dataset and dataloader
     print("\n[1/4] Creating synthetic video dataset...")
-    dataset = SyntheticVideoDataset(num_samples=300)
+    dataset = SyntheticVideoDataset(num_samples=80)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
     print(f"  ✓ Created {len(dataset)} video samples")
     
