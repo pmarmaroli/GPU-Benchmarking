@@ -85,7 +85,7 @@ class SyntheticVideoDataset(Dataset):
                                VIDEO_FRAME_HEIGHT, VIDEO_FRAME_WIDTH).astype(np.float32)
         
         # VMAF score (0-100, continuous regression task)
-        vmaf_score = np.random.uniform(0, 100).astype(np.float32)
+        vmaf_score = np.float32(np.random.uniform(0, 100))
         
         return torch.from_numpy(video), vmaf_score
 
