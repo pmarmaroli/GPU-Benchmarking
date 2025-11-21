@@ -87,6 +87,50 @@ Trains dual deep learning models (Wav2Vec2 for audio and 3D CNN for video) acros
 - Training time per epoch (seconds)
 - Loss curves and convergence
 
+### Multiple Run Averaging
+
+The benchmark runs **10 complete iterations** by default to provide statistically reliable results. Each metric is reported as:
+
+```
+mean ± standard deviation
+```
+
+**Example:** `45.23 ± 2.15 samples/sec` means the average throughput across 10 runs was 45.23 samples/sec, with most runs falling within ±2.15 of that value.
+
+You can adjust `NUM_RUNS` in `main.py` to run more iterations (for even higher confidence) or fewer (for faster testing).
+
+## Understanding the Metrics
+
+### Throughput (samples/sec)
+
+**What it is:** How many training samples the GPU can process per second.  
+**Why it matters:** Higher throughput = faster training. A good GPU will process more samples in less time. This is the most direct measure of your GPU's speed for deep learning tasks.
+
+### Training Time per Epoch (seconds)
+
+**What it is:** How long it takes to train on the entire dataset once.  
+**Why it matters:** Lower time = better performance. If an epoch takes 10 seconds instead of 60, you can experiment and iterate 6x faster.
+
+### GPU Memory Usage (MB)
+
+**What it is:** How much of your GPU's RAM is being used during training.  
+**Why it matters:** More available memory means you can use larger batch sizes or bigger models. If you hit the limit (e.g., 8GB for RTX 4060), you'll get "out of memory" errors.
+
+### Peak GPU Memory (MB)
+
+**What it is:** The maximum amount of GPU memory used at any point during training.  
+**Why it matters:** Shows how close you are to your GPU's limit. Helps you understand if you can increase batch size or need to reduce model complexity.
+
+### Loss (CrossEntropy / MSE)
+
+**What it is:** A number representing how "wrong" the model's predictions are. Lower is better.  
+**Why it matters:** Loss should decrease over epochs, showing the model is learning. If it stays flat or increases, something's wrong with training. Different models use different loss functions (CrossEntropy for classification, MSE for regression).
+
+### Speedup (Video/Audio ratio)
+
+**What it is:** How much faster one model trains compared to the other.  
+**Why it matters:** Helps compare the computational cost of different model architectures. A 2x speedup means one model trains in half the time.
+
 ## Output
 
 Results are saved to the `outputs/` directory:

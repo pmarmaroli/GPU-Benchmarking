@@ -22,6 +22,7 @@ BATCH_SIZE = 4
 NUM_EPOCHS = 2
 LEARNING_RATE = 0.001
 NUM_WORKERS = 2
+NUM_RUNS = 10  # Number of times to run the benchmark for averaging
 
 # Audio config
 AUDIO_SAMPLE_RATE = 16000
@@ -437,7 +438,7 @@ def create_benchmark_visualization(audio_results, video_results, device_info):
     ax3.set_xlabel('Epoch', fontsize=10, fontweight='bold')
     ax3.set_ylabel('Throughput (samples/sec)', fontsize=10, fontweight='bold')
     ax3.set_title('Throughput per Epoch', fontsize=11, fontweight='bold')
-    ax3.set_ylim(0, 50)
+    ax3.set_ylim(0, 1000)
     ax3.set_xticks(x)
     ax3.set_xticklabels(epochs)
     ax3.legend()
@@ -479,7 +480,30 @@ def create_benchmark_visualization(audio_results, video_results, device_info):
     ax6 = fig.add_subplot(gs[2, 2])
     ax6.axis('off')
     
-    summary_text = f"""
+    # Check if we have standard deviation data (from multiple runs)
+    has_std = 'total_time_std' in audio_results and 'total_time_std' in video_results
+    
+    if has_std:
+        summary_text = f"""
+    BENCHMARK SUMMARY
+    (Average of {NUM_RUNS} runs ± std dev)
+    
+    Wav2Vec2 (Audio)
+    ├─ Avg Total Time: {audio_results['total_time']:.2f} ± {audio_results['total_time_std']:.2f}s
+    ├─ Avg Throughput: {audio_results['avg_throughput']:.2f} ± {audio_results['avg_throughput_std']:.2f} samples/sec
+    ├─ Avg Peak Memory: {audio_results['peak_memory_mb']:.2f} ± {audio_results['peak_memory_mb_std']:.2f} MB
+    └─ Avg Loss: {np.mean(audio_losses):.4f}
+    
+    3D CNN (Video)
+    ├─ Avg Total Time: {video_results['total_time']:.2f} ± {video_results['total_time_std']:.2f}s
+    ├─ Avg Throughput: {video_results['avg_throughput']:.2f} ± {video_results['avg_throughput_std']:.2f} samples/sec
+    ├─ Avg Peak Memory: {video_results['peak_memory_mb']:.2f} ± {video_results['peak_memory_mb_std']:.2f} MB
+    └─ Avg Loss: {np.mean(video_losses):.4f}
+    
+    Speedup (Video/Audio): {audio_results['total_time']/video_results['total_time']:.2f}x
+        """
+    else:
+        summary_text = f"""
     BENCHMARK SUMMARY
     
     Wav2Vec2 (Audio)
@@ -495,7 +519,7 @@ def create_benchmark_visualization(audio_results, video_results, device_info):
     └─ Avg Loss: {np.mean(video_losses):.4f}
     
     Speedup (Video/Audio): {audio_results['total_time']/video_results['total_time']:.2f}x
-    """
+        """
     
     ax6.text(0.05, 0.95, summary_text, transform=ax6.transAxes, fontsize=9,
             verticalalignment='top', fontfamily='monospace',
@@ -520,19 +544,67 @@ def create_benchmark_visualization(audio_results, video_results, device_info):
 if __name__ == "__main__":
     print("\n" + "🚀" * 40)
     print("Starting GPU Benchmarking Suite...")
+    print(f"Running {NUM_RUNS} iterations for average metrics")
     print("🚀" * 40)
     
-    audio_results = benchmark_audio()
-    video_results = benchmark_video()
+    # Store results from all runs
+    all_audio_results = []
+    all_video_results = []
+    
+    for run in range(NUM_RUNS):
+        print(f"\n{'='*80}")
+        print(f"RUN {run + 1}/{NUM_RUNS}")
+        print(f"{'='*80}")
+        
+        audio_results = benchmark_audio()
+        video_results = benchmark_video()
+        
+        all_audio_results.append(audio_results)
+        all_video_results.append(video_results)
+        
+        # Clear GPU cache between runs
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    
+    # Calculate averages
+    print("\n" + "=" * 80)
+    print("CALCULATING AVERAGE METRICS...")
+    print("=" * 80)
+    
+    avg_audio = {
+        'model': 'Wav2Vec2',
+        'total_time': np.mean([r['total_time'] for r in all_audio_results]),
+        'total_time_std': np.std([r['total_time'] for r in all_audio_results]),
+        'avg_throughput': np.mean([r['avg_throughput'] for r in all_audio_results]),
+        'avg_throughput_std': np.std([r['avg_throughput'] for r in all_audio_results]),
+        'peak_memory_mb': np.mean([r['peak_memory_mb'] for r in all_audio_results]),
+        'peak_memory_mb_std': np.std([r['peak_memory_mb'] for r in all_audio_results]),
+        'epochs': all_audio_results[0]['epochs']  # Use first run's epoch data for visualization
+    }
+    
+    avg_video = {
+        'model': '3D CNN',
+        'total_time': np.mean([r['total_time'] for r in all_video_results]),
+        'total_time_std': np.std([r['total_time'] for r in all_video_results]),
+        'avg_throughput': np.mean([r['avg_throughput'] for r in all_video_results]),
+        'avg_throughput_std': np.std([r['avg_throughput'] for r in all_video_results]),
+        'peak_memory_mb': np.mean([r['peak_memory_mb'] for r in all_video_results]),
+        'peak_memory_mb_std': np.std([r['peak_memory_mb'] for r in all_video_results]),
+        'epochs': all_video_results[0]['epochs']  # Use first run's epoch data for visualization
+    }
     
     # Summary comparison
     print("\n" + "=" * 80)
-    print("BENCHMARK SUMMARY")
+    print(f"BENCHMARK SUMMARY (Average of {NUM_RUNS} runs)")
     print("=" * 80)
-    print(f"\n{'Model':<20} {'Total Time (s)':<20} {'Avg Throughput':<20} {'Peak Memory (MB)':<20}")
-    print("-" * 80)
-    print(f"{'Wav2Vec2':<20} {audio_results['total_time']:<20.2f} {audio_results['avg_throughput']:<20.2f} {audio_results['peak_memory_mb']:<20.2f}")
-    print(f"{'3D CNN (Video)':<20} {video_results['total_time']:<20.2f} {video_results['avg_throughput']:<20.2f} {video_results['peak_memory_mb']:<20.2f}")
+    print(f"\n{'Model':<20} {'Total Time (s)':<25} {'Avg Throughput':<30} {'Peak Memory (MB)':<25}")
+    print("-" * 100)
+    print(f"{'Wav2Vec2':<20} {avg_audio['total_time']:<8.2f} ± {avg_audio['total_time_std']:<8.2f}   "
+          f"{avg_audio['avg_throughput']:<8.2f} ± {avg_audio['avg_throughput_std']:<8.2f} samples/sec   "
+          f"{avg_audio['peak_memory_mb']:<8.2f} ± {avg_audio['peak_memory_mb_std']:<8.2f}")
+    print(f"{'3D CNN (Video)':<20} {avg_video['total_time']:<8.2f} ± {avg_video['total_time_std']:<8.2f}   "
+          f"{avg_video['avg_throughput']:<8.2f} ± {avg_video['avg_throughput_std']:<8.2f} samples/sec   "
+          f"{avg_video['peak_memory_mb']:<8.2f} ± {avg_video['peak_memory_mb_std']:<8.2f}")
     
     # Collect device information
     device_info = {
@@ -543,10 +615,10 @@ if __name__ == "__main__":
         'gpu_memory': torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0
     }
     
-    # Create PNG visualization
+    # Create PNG visualization (using averaged results)
     print("\n" + "=" * 80)
     print("Generating visualization...")
-    create_benchmark_visualization(audio_results, video_results, device_info)
+    create_benchmark_visualization(avg_audio, avg_video, device_info)
     
     # Save results to JSON
     print("\nSaving results to JSON...")
@@ -556,8 +628,11 @@ if __name__ == "__main__":
         'gpu_name': device_info['gpu_name'],
         'gpu_memory_gb': device_info['gpu_memory'],
         'cuda_available': device_info['cuda_available'],
-        'audio': audio_results,
-        'video': video_results
+        'num_runs': NUM_RUNS,
+        'audio_averaged': avg_audio,
+        'video_averaged': avg_video,
+        'audio_all_runs': all_audio_results,
+        'video_all_runs': all_video_results
     }
     
     output_dir = 'outputs'
@@ -568,5 +643,5 @@ if __name__ == "__main__":
     
     print(f"  ✓ Results saved to {json_path}")
     print("\n" + "=" * 80)
-    print("✅ All benchmarks completed successfully!")
+    print(f"✅ All benchmarks completed successfully! ({NUM_RUNS} runs)")
     print("=" * 80)
