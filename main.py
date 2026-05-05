@@ -4,7 +4,9 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import time
 import psutil
+import platform
 import os
+import re
 import numpy as np
 from datetime import datetime
 import json
@@ -376,7 +378,7 @@ def benchmark_video():
 # VISUALIZATION
 # ============================================================================
 
-def create_benchmark_visualization(audio_results, video_results, device_info):
+def create_benchmark_visualization(audio_results, video_results, device_info, base_filename):
     """Create comprehensive PNG visualization of benchmark results"""
     
     fig = plt.figure(figsize=(16, 12))
@@ -531,10 +533,90 @@ def create_benchmark_visualization(audio_results, video_results, device_info):
     # Save figure
     output_dir = 'outputs'
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, 'benchmark_results.png')
+    output_path = os.path.join(output_dir, f'{base_filename}.png')
     plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
     print(f"\n  ✓ Visualization saved to: {output_path}")
     plt.close()
+
+
+def _sanitize_filename(name):
+    """Replace characters that are not safe for filenames."""
+    return re.sub(r'[^\w\-]', '_', name).strip('_')
+
+
+def _get_machine_id():
+    """Return a machine identifier (hostname)."""
+    return platform.node()
+
+
+def generate_txt_report(audio_results, video_results, device_info, base_filename):
+    """Generate a txt report with GPU name and machine ID in the filename."""
+    gpu_name = device_info.get('gpu_name', 'CPU') if device_info['cuda_available'] else 'CPU'
+    machine_id = _get_machine_id()
+
+    output_dir = 'outputs'
+    os.makedirs(output_dir, exist_ok=True)
+    filepath = os.path.join(output_dir, f'{base_filename}.txt')
+
+    has_std = 'total_time_std' in audio_results and 'total_time_std' in video_results
+
+    lines = []
+    lines.append("=" * 80)
+    lines.append("DEEP LEARNING BENCHMARK REPORT")
+    lines.append("=" * 80)
+    lines.append(f"Timestamp       : {device_info['timestamp']}")
+    lines.append(f"Machine ID      : {machine_id}")
+    lines.append(f"Device          : {device_info['device']}")
+    lines.append(f"GPU Name        : {gpu_name}")
+    lines.append(f"GPU Memory      : {device_info['gpu_memory']:.2f} GB")
+    lines.append(f"CUDA Available  : {device_info['cuda_available']}")
+    lines.append(f"Batch Size      : {BATCH_SIZE}")
+    lines.append(f"Epochs          : {NUM_EPOCHS}")
+    lines.append(f"Learning Rate   : {LEARNING_RATE}")
+    lines.append(f"Number of Runs  : {NUM_RUNS}")
+    lines.append("")
+
+    # Audio results
+    lines.append("-" * 80)
+    lines.append("AUDIO BENCHMARK: Wav2Vec2 Speech Classification")
+    lines.append("-" * 80)
+    if has_std:
+        lines.append(f"  Total Time      : {audio_results['total_time']:.2f} +/- {audio_results['total_time_std']:.2f} s")
+        lines.append(f"  Avg Throughput   : {audio_results['avg_throughput']:.2f} +/- {audio_results['avg_throughput_std']:.2f} samples/sec")
+        lines.append(f"  Peak Memory      : {audio_results['peak_memory_mb']:.2f} +/- {audio_results['peak_memory_mb_std']:.2f} MB")
+    else:
+        lines.append(f"  Total Time      : {audio_results['total_time']:.2f} s")
+        lines.append(f"  Avg Throughput   : {audio_results['avg_throughput']:.2f} samples/sec")
+        lines.append(f"  Peak Memory      : {audio_results['peak_memory_mb']:.2f} MB")
+    for i, ep in enumerate(audio_results['epochs'], 1):
+        lines.append(f"  Epoch {i}: loss={ep['loss']:.4f}  time={ep['time']:.2f}s  throughput={ep['throughput']:.2f} samples/sec  mem={ep['memory_used_mb']:.2f} MB")
+    lines.append("")
+
+    # Video results
+    lines.append("-" * 80)
+    lines.append("VIDEO BENCHMARK: 3D CNN VMAF Quality Prediction")
+    lines.append("-" * 80)
+    if has_std:
+        lines.append(f"  Total Time      : {video_results['total_time']:.2f} +/- {video_results['total_time_std']:.2f} s")
+        lines.append(f"  Avg Throughput   : {video_results['avg_throughput']:.2f} +/- {video_results['avg_throughput_std']:.2f} samples/sec")
+        lines.append(f"  Peak Memory      : {video_results['peak_memory_mb']:.2f} +/- {video_results['peak_memory_mb_std']:.2f} MB")
+    else:
+        lines.append(f"  Total Time      : {video_results['total_time']:.2f} s")
+        lines.append(f"  Avg Throughput   : {video_results['avg_throughput']:.2f} samples/sec")
+        lines.append(f"  Peak Memory      : {video_results['peak_memory_mb']:.2f} MB")
+    for i, ep in enumerate(video_results['epochs'], 1):
+        lines.append(f"  Epoch {i}: loss={ep['loss']:.4f}  time={ep['time']:.2f}s  throughput={ep['throughput']:.2f} samples/sec  mem={ep['memory_used_mb']:.2f} MB")
+    lines.append("")
+
+    lines.append("=" * 80)
+    lines.append(f"Speedup (Audio/Video): {audio_results['total_time']/video_results['total_time']:.2f}x")
+    lines.append("=" * 80)
+
+    with open(filepath, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+
+    print(f"  ✓ Report saved to: {filepath}")
+    return filepath
 
 
 # ============================================================================
@@ -615,10 +697,16 @@ if __name__ == "__main__":
         'gpu_memory': torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0
     }
     
+    # Build base filename shared by all outputs
+    gpu_name = device_info['gpu_name'] if device_info['cuda_available'] else 'CPU'
+    machine_id = _get_machine_id()
+    timestamp_file = datetime.now().strftime('%Y%m%d_%H%M%S')
+    base_filename = f"benchmark_{_sanitize_filename(gpu_name)}_{_sanitize_filename(machine_id)}_{timestamp_file}"
+    
     # Create PNG visualization (using averaged results)
     print("\n" + "=" * 80)
     print("Generating visualization...")
-    create_benchmark_visualization(avg_audio, avg_video, device_info)
+    create_benchmark_visualization(avg_audio, avg_video, device_info, base_filename)
     
     # Save results to JSON
     print("\nSaving results to JSON...")
@@ -637,11 +725,16 @@ if __name__ == "__main__":
     
     output_dir = 'outputs'
     os.makedirs(output_dir, exist_ok=True)
-    json_path = os.path.join(output_dir, 'benchmark_results.json')
+    json_path = os.path.join(output_dir, f'{base_filename}.json')
     with open(json_path, 'w') as f:
         json.dump(results_summary, f, indent=2, default=str)
     
     print(f"  ✓ Results saved to {json_path}")
+    
+    # Generate txt report with GPU name and machine ID in filename
+    print("\nGenerating txt report...")
+    generate_txt_report(avg_audio, avg_video, device_info, base_filename)
+    
     print("\n" + "=" * 80)
     print(f"✅ All benchmarks completed successfully! ({NUM_RUNS} runs)")
     print("=" * 80)
