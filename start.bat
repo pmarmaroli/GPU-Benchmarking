@@ -119,8 +119,13 @@ if errorlevel 1 (
     echo WARNING: Some dependencies may be missing
     echo.
     echo Installing dependencies...
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 >nul 2>&1
-    pip install matplotlib numpy psutil transformers >nul 2>&1
+    "%VENV_PYTHON%" -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+    if errorlevel 1 (
+        echo ERROR: Failed to install PyTorch CUDA packages
+        pause
+        exit /b 1
+    )
+    "%VENV_PYTHON%" -m pip install matplotlib numpy psutil transformers >nul 2>&1
     echo   ✓ Dependencies installed
 ) else (
     echo   ✓ Dependencies verified
